@@ -503,6 +503,7 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
   const [fieldSchemaErrorMessage, setFieldSchemaErrorMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState<PdfTemplateFormState>(initialPdfTemplateForm);
+  const [previewTemplate, setPreviewTemplate] = useState<PdfTemplate | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const schemaById = useMemo(() => new Map(fieldSchemas.map((schema) => [schema.id, schema])), [fieldSchemas]);
@@ -737,9 +738,20 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
           </TableHead>
           <TableBody>
             {pageData.items.map((template) => (
-              <TableRow hover key={template.id}>
+              <TableRow
+                hover
+                key={template.id}
+                tabIndex={0}
+                onClick={() => setPreviewTemplate(template)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setPreviewTemplate(template);
+                  }
+                }}
+                sx={{ cursor: 'pointer' }}
+              >
                 <TableCell sx={{ minWidth: 220 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
                     {template.name || '-'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
@@ -757,12 +769,26 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateTime(template.createdAt)}</TableCell>
                 <TableCell align="right">
                   <Tooltip title="수정">
-                    <IconButton color="primary" onClick={() => handleEditOpen(template)} aria-label="edit pdf template">
+                    <IconButton
+                      color="primary"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleEditOpen(template);
+                      }}
+                      aria-label="edit pdf template"
+                    >
                       <EditRoundedIcon />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="삭제">
-                    <IconButton color="error" onClick={() => handleDelete(template)} aria-label="delete pdf template">
+                    <IconButton
+                      color="error"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDelete(template);
+                      }}
+                      aria-label="delete pdf template"
+                    >
                       <DeleteRoundedIcon />
                     </IconButton>
                   </Tooltip>
@@ -939,6 +965,41 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <Dialog open={Boolean(previewTemplate)} onClose={() => setPreviewTemplate(null)} fullWidth maxWidth="md">
+        <DialogTitle>{previewTemplate?.name || 'PDFTemplate 미리보기'}</DialogTitle>
+        <DialogContent>
+          {previewTemplate ? (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              {getImageUrl(previewTemplate.previewImage) ? (
+                <Box
+                  component="img"
+                  src={getImageUrl(previewTemplate.previewImage)}
+                  alt={`${previewTemplate.name || 'PDFTemplate'} preview`}
+                  sx={{
+                    display: 'block',
+                    width: '100%',
+                    maxHeight: '70vh',
+                    objectFit: 'contain',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'background.default',
+                  }}
+                />
+              ) : (
+                <Alert severity="info">미리보기 이미지가 없습니다.</Alert>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                {previewTemplate.id}
+              </Typography>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewTemplate(null)}>닫기</Button>
+        </DialogActions>
       </Dialog>
     </Paper>
   );
