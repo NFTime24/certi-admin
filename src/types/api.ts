@@ -102,3 +102,78 @@ export interface OrganizationSubscriptionInfo {
     code?: string;
   };
 }
+
+export type BadgeAssetType = 'COMMON' | 'ORGANIZATION' | 'GENERATED' | string;
+
+export type BadgeAssetCategoryCode =
+  | 'COMMUNICATION'
+  | 'MANAGEMENT'
+  | 'ACHIEVEMENT'
+  | 'EDUCATION'
+  | 'TECHNOLOGY'
+  | 'LIBRARY';
+
+export interface BadgeAsset {
+  id: string;
+  type?: BadgeAssetType;
+  name?: string;
+  categoryCode?: BadgeAssetCategoryCode | string;
+  image?: ImageInfo;
+  organizationId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PdfTemplateOrientation = 'HORIZONTAL' | 'VERTICAL';
+
+export interface MediaFile {
+  id: string;
+  fileTypeCode?: string;
+  objectKey?: string;
+  sizeInBytes?: number;
+  mimeType?: string;
+  s3Url?: string;
+  variantUrls?: Record<string, string>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PdfTemplateCoordinateSystem {
+  origin: string;
+  unit: string;
+}
+
+export interface PdfTemplate {
+  id: string;
+  organizationId?: string;
+  name?: string;
+  pdf?: {
+    id?: string;
+    url?: string;
+  };
+  previewImage?: ImageInfo;
+  pageSize?: {
+    width?: number;
+    height?: number;
+  };
+  orientation?: PdfTemplateOrientation;
+  coordinateSystem?: PdfTemplateCoordinateSystem;
+  fieldSchemaVersion?: {
+    id?: string;
+    version?: string;
+  };
+  fields?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreatePdfTemplatePayload {
+  name?: string;
+  pdfId: string;
+  orientation?: PdfTemplateOrientation;
+  coordinateSystem: PdfTemplateCoordinateSystem;
+  fields: unknown;
+  fieldSchemaVersionId?: string;
+}
+
+export type UpdatePdfTemplatePayload = Partial<CreatePdfTemplatePayload>;

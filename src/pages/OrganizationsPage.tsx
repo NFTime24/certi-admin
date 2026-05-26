@@ -27,9 +27,11 @@ import {
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { listOrganizations } from '../api/organizations';
 import type { Organization, PageData, Pagination } from '../types/api';
+import { formatDateTime, formatNumber } from '../utils/format';
 
 const defaultPagination: Pagination = {
   page: 1,
@@ -48,6 +50,7 @@ const defaultPageData: PageData<Organization> = {
 
 export function OrganizationsPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -212,7 +215,18 @@ export function OrganizationsPage() {
                 </TableHead>
                 <TableBody>
                   {visibleRows.map((organization) => (
-                    <TableRow hover key={organization.id}>
+                    <TableRow
+                      hover
+                      key={organization.id}
+                      tabIndex={0}
+                      onClick={() => navigate(`/organizations/${organization.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          navigate(`/organizations/${organization.id}`);
+                        }
+                      }}
+                      sx={{ cursor: 'pointer' }}
+                    >
                       <TableCell sx={{ minWidth: 180 }}>
                         <Typography variant="body2" sx={{ fontWeight: 700 }}>
                           {organization.name || '-'}
@@ -281,28 +295,4 @@ function getSubscriptionStatus(organization: Organization) {
     organization.subscriptionInfo?.subscription?.name ||
     '-'
   );
-}
-
-function formatNumber(value?: number) {
-  return new Intl.NumberFormat('ko-KR').format(value ?? 0);
-}
-
-function formatDateTime(value?: string) {
-  if (!value) {
-    return '-';
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return '-';
-  }
-
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
 }

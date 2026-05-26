@@ -111,6 +111,18 @@ function getErrorMessage(payload: unknown, fallback: string) {
     }
   }
 
+  if (payload && typeof payload === 'object' && 'error' in payload) {
+    const error = (payload as { error?: unknown }).error;
+
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
+    }
+  }
+
   return fallback || '요청 처리 중 오류가 발생했습니다.';
 }
 

@@ -5,6 +5,7 @@ import SettingsSuggestRoundedIcon from '@mui/icons-material/SettingsSuggestRound
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { getConfigurationError } from './config/env';
 import { LoginPage } from './pages/LoginPage';
+import { OrganizationDetailPage } from './pages/OrganizationDetailPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { theme } from './theme';
 
@@ -27,6 +28,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <OrganizationsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/organizations/:organizationId"
+                element={
+                  <ProtectedRoute>
+                    <OrganizationDetailPage />
                   </ProtectedRoute>
                 }
               />
