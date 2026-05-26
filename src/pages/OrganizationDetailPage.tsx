@@ -42,6 +42,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { createOrganizationBadgeAsset, deleteOrganizationBadgeAsset, listOrganizationBadgeAssets } from '../api/badgeAssets';
 import { uploadImageFile, uploadPdfFile } from '../api/mediaFiles';
 import { getOrganization } from '../api/organizations';
+import { listPdfTemplateFieldSchemas } from '../api/pdfTemplateFieldSchemas';
 import { createPdfTemplate, deletePdfTemplate, listPdfTemplates, updatePdfTemplate } from '../api/pdfTemplates';
 import { useAuth } from '../auth/AuthContext';
 import type {
@@ -50,6 +51,7 @@ import type {
   PageData,
   Pagination,
   PdfTemplate,
+  PdfTemplateFieldSchema,
   PdfTemplateOrientation,
 } from '../types/api';
 import { formatDateTime, formatNumber } from '../utils/format';
@@ -84,6 +86,8 @@ const badgeAssetCategories = [
 ];
 
 const orientationOptions: PdfTemplateOrientation[] = ['HORIZONTAL', 'VERTICAL'];
+const coordinateOriginOptions = ['bottom-left', 'top-left'] as const;
+const coordinateUnitOptions = ['pt', 'px'] as const;
 
 interface BadgeAssetFormState {
   name: string;
@@ -111,8 +115,8 @@ const initialPdfTemplateForm: PdfTemplateFormState = {
   mode: 'create',
   name: '',
   orientation: 'HORIZONTAL',
-  origin: 'TOP_LEFT',
-  unit: 'POINT',
+  origin: 'top-left',
+  unit: 'pt',
   fieldSchemaVersionId: '',
   fieldsJson: '{}',
   pdfFile: null,
@@ -490,13 +494,19 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [pageData, setPageData] = useState<PageData<PdfTemplate>>(defaultPdfTemplatePageData);
+  const [fieldSchemas, setFieldSchemas] = useState<PdfTemplateFieldSchema[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFieldSchemaLoading, setIsFieldSchemaLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [fieldSchemaErrorMessage, setFieldSchemaErrorMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState<PdfTemplateFormState>(initialPdfTemplateForm);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const schemaById = useMemo(() => new Map(fieldSchemas.map((schema) => [schema.id, schema])), [fieldSchemas]);
+  const defaultFieldSchema = useMemo(() => fieldSchemas.find((schema) => schema.isDefault), [fieldSchemas]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -536,8 +546,48 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
     };
   }, [organizationId, page, reloadKey, rowsPerPage]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadFieldSchemas() {
+      setIsFieldSchemaLoading(true);
+      setFieldSchemaErrorMessage('');
+
+      try {
+        const data = await listPdfTemplateFieldSchemas(
+          {
+            page: 1,
+            size: 100,
+          },
+          controller.signal,
+        );
+
+        setFieldSchemas(data.items);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+
+        setFieldSchemaErrorMessage(error instanceof Error ? error.message : 'Field schema 목록을 불러올 수 없습니다.');
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsFieldSchemaLoading(false);
+        }
+      }
+    }
+
+    loadFieldSchemas();
+
+    return () => {
+      controller.abort();
+    };
+  }, [reloadKey]);
+
   const handleCreateOpen = () => {
-    setForm(initialPdfTemplateForm);
+    setForm({
+      ...initialPdfTemplateForm,
+      fieldSchemaVersionId: defaultFieldSchema?.id || '',
+    });
     setFormError('');
     setIsDialogOpen(true);
   };
@@ -548,8 +598,8 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
       templateId: template.id,
       name: template.name || '',
       orientation: template.orientation || 'HORIZONTAL',
-      origin: template.coordinateSystem?.origin || 'TOP_LEFT',
-      unit: template.coordinateSystem?.unit || 'POINT',
+      origin: normalizeCoordinateOrigin(template.coordinateSystem?.origin),
+      unit: normalizeCoordinateUnit(template.coordinateSystem?.unit),
       fieldSchemaVersionId: template.fieldSchemaVersion?.id || '',
       fieldsJson: JSON.stringify(template.fields ?? {}, null, 2),
       pdfFile: null,
@@ -644,7 +694,7 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
     <Paper elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 2 }}>
       <SectionHeader
         title="PDFTemplate"
-        description={`총 ${formatNumber(pageData.pagination.totalElement)}개`}
+        description={`총 ${formatNumber(pageData.pagination.totalElement)}개 · Field schema ${formatNumber(fieldSchemas.length)}개`}
         actions={
           <>
             <Tooltip title="새로고침">
@@ -666,6 +716,11 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
 
       {isLoading ? <LinearProgress /> : <Box sx={{ height: 4 }} />}
       {errorMessage ? <Alert severity="error" sx={{ m: 2 }}>{errorMessage}</Alert> : null}
+      {fieldSchemaErrorMessage ? (
+        <Alert severity="warning" sx={{ m: 2 }}>
+          {fieldSchemaErrorMessage}
+        </Alert>
+      ) : null}
 
       <TableContainer sx={{ minHeight: 260 }}>
         <Table size="small" aria-label="pdf templates">
@@ -698,7 +753,7 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
                     : '-'}
                 </TableCell>
                 <TableCell>{formatPageSize(template)}</TableCell>
-                <TableCell>{template.fieldSchemaVersion?.version || template.fieldSchemaVersion?.id || '-'}</TableCell>
+                <TableCell>{renderTemplateSchema(template, schemaById)}</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateTime(template.createdAt)}</TableCell>
                 <TableCell align="right">
                   <Tooltip title="수정">
@@ -791,32 +846,78 @@ function PdfTemplateSection({ organizationId }: { organizationId: string }) {
                     ))}
                   </Select>
                 </FormControl>
-                <TextField
-                  label="좌표 원점"
-                  value={form.origin}
-                  onChange={(event) => setForm((current) => ({ ...current, origin: event.target.value }))}
-                  required
-                  fullWidth
-                />
-                <TextField
-                  label="좌표 단위"
-                  value={form.unit}
-                  onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
-                  required
-                  fullWidth
-                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="pdf-origin-label">좌표 원점</InputLabel>
+                  <Select
+                    labelId="pdf-origin-label"
+                    label="좌표 원점"
+                    value={form.origin}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        origin: event.target.value,
+                      }))
+                    }
+                  >
+                    {coordinateOriginOptions.map((origin) => (
+                      <MenuItem key={origin} value={origin}>
+                        {origin}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="pdf-unit-label">좌표 단위</InputLabel>
+                  <Select
+                    labelId="pdf-unit-label"
+                    label="좌표 단위"
+                    value={form.unit}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        unit: event.target.value,
+                      }))
+                    }
+                  >
+                    {coordinateUnitOptions.map((unit) => (
+                      <MenuItem key={unit} value={unit}>
+                        {unit}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>
-              <TextField
-                label="Field Schema Version ID"
-                value={form.fieldSchemaVersionId}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    fieldSchemaVersionId: event.target.value,
-                  }))
-                }
-                fullWidth
-              />
+              <FormControl size="small" fullWidth disabled={isFieldSchemaLoading || fieldSchemas.length === 0}>
+                <InputLabel id="field-schema-label">Field Schema</InputLabel>
+                <Select
+                  labelId="field-schema-label"
+                  label="Field Schema"
+                  value={form.fieldSchemaVersionId}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      fieldSchemaVersionId: event.target.value,
+                    }))
+                  }
+                >
+                  <MenuItem value="">선택 안 함</MenuItem>
+                  {form.fieldSchemaVersionId && !schemaById.has(form.fieldSchemaVersionId) ? (
+                    <MenuItem value={form.fieldSchemaVersionId}>
+                      현재 스키마 ({form.fieldSchemaVersionId})
+                    </MenuItem>
+                  ) : null}
+                  {fieldSchemas.map((schema) => (
+                    <MenuItem key={schema.id} value={schema.id}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
+                        <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                          {formatFieldSchemaName(schema)}
+                        </Typography>
+                        {schema.isDefault ? <Chip size="small" color="primary" label="Default" /> : null}
+                      </Stack>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField
                 label="Fields JSON"
                 value={form.fieldsJson}
@@ -891,4 +992,33 @@ function formatPageSize(template: PdfTemplate) {
   }
 
   return `${template.pageSize.width} x ${template.pageSize.height}`;
+}
+
+function renderTemplateSchema(template: PdfTemplate, schemaById: Map<string, PdfTemplateFieldSchema>) {
+  const schemaId = template.fieldSchemaVersion?.id;
+
+  if (!schemaId) {
+    return '-';
+  }
+
+  const schema = schemaById.get(schemaId);
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      <Typography variant="body2">{schema ? formatFieldSchemaName(schema) : template.fieldSchemaVersion?.version || schemaId}</Typography>
+      {schema?.isDefault ? <Chip size="small" color="primary" label="Default" /> : null}
+    </Stack>
+  );
+}
+
+function formatFieldSchemaName(schema: PdfTemplateFieldSchema) {
+  return schema.version || schema.id;
+}
+
+function normalizeCoordinateOrigin(origin?: string) {
+  return coordinateOriginOptions.find((option) => option === origin) || 'top-left';
+}
+
+function normalizeCoordinateUnit(unit?: string) {
+  return coordinateUnitOptions.find((option) => option === unit) || 'pt';
 }

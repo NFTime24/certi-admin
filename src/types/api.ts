@@ -167,6 +167,16 @@ export interface PdfTemplate {
   updatedAt?: string;
 }
 
+export interface PdfTemplateFieldSchema {
+  id: string;
+  version?: string;
+  schema?: unknown;
+  description?: string;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CreatePdfTemplatePayload {
   name?: string;
   pdfId: string;
